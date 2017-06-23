@@ -1,7 +1,17 @@
 package curry;
 
-our $VERSION = '1.000000';
+our $VERSION = '2.000000';
 $VERSION = eval $VERSION;
+
+use Exporter qw(import);
+
+our @EXPORT_OK = qw($_curry);
+
+our $_curry = sub {
+  my ($invocant, $code) = splice @_, 0, 2;
+  my @args = @_;
+  sub { $invocant->$code(@args => @_) }
+};
 
 sub AUTOLOAD {
   my $invocant = shift;
@@ -15,6 +25,20 @@ sub AUTOLOAD {
 package curry::weak;
 
 use Scalar::Util ();
+
+use Exporter qw(import);
+
+our @EXPORT_OK = qw($_curry_weak);
+
+our $_curry_weak = sub {
+  my ($invocant, $code) = splice @_, 0, 2;
+  Scalar::Util::weaken($invocant) if Scalar::Util::blessed($invocant);
+  my @args = @_;
+  sub {
+    return unless $invocant;
+    $invocant->$code(@args => @_)
+  }
+};
 
 sub AUTOLOAD {
   my $invocant = shift;
@@ -58,6 +82,39 @@ is equivalent to:
       $weak_obj->frobnicate(foo => @_)
     };
   };
+
+If you want to pass a weakened copy of an object to a coderef, import
+the C< $_curry_weak > variable:
+
+ use curry::weak '$_curry_weak';
+
+ my $code = $self->$_curry_weak(sub {
+  my ($self, @args) = @_;
+  print "$self must still be alive, because we were called (with @args)\n";
+ }, 'xyz');
+
+which is much the same as:
+
+ my $code = do {
+  my $sub = sub {
+   my ($self, @args) = @_;
+   print "$self must still be alive, because we were called (with @args)\n";
+  };
+  Scalar::Util::weaken(my $weak_obj = $self);
+  sub {
+   return unless $weak_obj; # in case it already went away
+   $sub->($weak_obj, 'xyz', @_);
+  }
+ };
+
+There's an equivalent - but somewhat less useful - C< $_curry > variable:
+
+ use curry '$_curry';
+
+ my $code = $self->$_curry(sub {
+  my ($self, $var) = @_;
+  print "The stashed value from our ->something method call was $var\n";
+ }, $self->something('complicated'));
 
 =head1 RATIONALE
 
