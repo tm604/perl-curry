@@ -3,34 +3,25 @@ package curry;
 our $VERSION = '2.000000';
 $VERSION = eval $VERSION;
 
-use Exporter qw(import);
-
-our @EXPORT_OK = qw($_curry);
-
-our $_curry = sub {
+our $curry = sub {
   my ($invocant, $code) = splice @_, 0, 2;
   my @args = @_;
   sub { $invocant->$code(@args => @_) }
 };
 
+our $weak = $curry::weak::curry_weak;
+
 sub AUTOLOAD {
   my $invocant = shift;
   my ($method) = our $AUTOLOAD =~ /^curry::(.+)$/;
-  my @args = @_;
-  return sub {
-    $invocant->$method(@args => @_);
-  }
+  $invocant->$curry($method => @_);
 }
 
 package curry::weak;
 
 use Scalar::Util ();
 
-use Exporter qw(import);
-
-our @EXPORT_OK = qw($_curry_weak);
-
-our $_curry_weak = sub {
+our $curry_weak = sub {
   my ($invocant, $code) = splice @_, 0, 2;
   Scalar::Util::weaken($invocant) if Scalar::Util::blessed($invocant);
   my @args = @_;
@@ -44,11 +35,7 @@ sub AUTOLOAD {
   my $invocant = shift;
   Scalar::Util::weaken($invocant) if Scalar::Util::blessed($invocant);
   my ($method) = our $AUTOLOAD =~ /^curry::weak::(.+)$/;
-  my @args = @_;
-  return sub {
-    return unless $invocant;
-    $invocant->$method(@args => @_);
-  }
+  $invocant->$curry_weak($method => @_);
 }
 
 1;
@@ -83,12 +70,12 @@ is equivalent to:
     };
   };
 
-If you want to pass a weakened copy of an object to a coderef, import
-the C< $_curry_weak > variable:
+If you want to pass a weakened copy of an object to a coderef, use the
+C< $weak > package variable:
 
- use curry::weak '$_curry_weak';
+ use curry::weak;
 
- my $code = $self->$_curry_weak(sub {
+ my $code = $self->$curry::weak(sub {
   my ($self, @args) = @_;
   print "$self must still be alive, because we were called (with @args)\n";
  }, 'xyz');
@@ -107,14 +94,23 @@ which is much the same as:
   }
  };
 
-There's an equivalent - but somewhat less useful - C< $_curry > variable:
+C< $curry::weak > is actually a copy of C< $curry::weak::curry_weak >.
 
- use curry '$_curry';
+There's an equivalent - but somewhat less useful - C< $curry > package variable:
 
- my $code = $self->$_curry(sub {
+ use curry;
+
+ my $code = $self->$curry::curry(sub {
   my ($self, $var) = @_;
   print "The stashed value from our ->something method call was $var\n";
  }, $self->something('complicated'));
+
+Both of these methods can also be used if your scalar is a method name, rather
+than a coderef.
+
+ use curry;
+
+ my $code = $self->$curry::curry($methodname, $self->something('complicated'));
 
 =head1 RATIONALE
 
